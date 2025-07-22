@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LAN Chat</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="chat-container">
+        <aside class="sidebar">
+            <h2>Chats</h2>
+            <ul id="device-list">
+            </ul>
+        </aside>
+
+        <main class="main-chat">
+            <header class="chat-header">
+                <h1 id="chat-name">No Chat Selected</h1>
+            </header>
+
+            <div class="messages" id="message-box">
+                <!-- Messages will appear here -->
+            </div>
+
+            <form id="message-form">
+                <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off" />
+                <button type="submit">Send</button>
+            </form>
+        </main>
+    </div>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        let selectedChat = null;
+
+        socket.on('new_message', function(msgList) {
+            const box = document.getElementById('message-box');
+            box.innerHTML = "";
+
+            msgList.forEach(msg => {
+                const msgEl = document.createElement('div');
+                msgEl.className = 'message ' + (msg.type === 'out' ? 'outgoing' : 'incoming');
+                msgEl.textContent = msg.message;
+                box.appendChild(msgEl);
+            });
+
+            box.scrollTop = box.scrollHeight;
+        });
+
+
+        socket.on('new_discovery', fetchDevices);
+
+        function selectChat(name) {
+            selectedChat = name;
+            updateSelectedUI();
+            fetch("/select", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ selected: name })
+                });
+            document.getElementById("chat-name").innerText = name;
+        }
+        function updateSelectedUI() {
+            const listItems = document.querySelectorAll('#device-list li');
+            listItems.forEach(li => {
+                li.classList.toggle('selected', li.textContent === selectedChat);
+            });
+        }
+
+
+        const form = document.getElementById("message-form");
+        form.addEventListener("submit", function(e) {
+            e.preventDefault();
+            const input = document.getElementById("message-input");
+            const msg = input.value;
+            if (msg && selectedChat) {
+                const box = document.getElementById("message-box");
+                const msgEl = document.createElement("div");
+                msgEl.className = "message outgoing";
+                msgEl.textContent = msg;
+                box.appendChild(msgEl);
+
+                fetch("/send", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ message: msg, to: selectedChat })
+                });
+
+                input.value = "";
+                box.scrollTop = box.scrollHeight;
+            }
+        });
+        async function fetchDevices() {
+            const response = await fetch('/devices');
+            const data = await response.json();
+            const list = document.getElementById('device-list');
+            list.innerHTML = '';
+            data.forEach(ip => {
+                const li = document.createElement('li');
+                li.textContent = ip;
+                li.addEventListener('click', () => selectChat(ip));
+                list.appendChild(li);
+            });
+            if(data.length == 0){
+                const li = document.createElement('li');
+                li.textContent = "No devices found";
+                li.style.fontStyle = "italic";
+                li.style.color = "#888";
+                list.appendChild(li);
+
+            }
+        }
+        window.addEventListener('load', fetchDevices);
+    </script>
+</body>
+</html>
